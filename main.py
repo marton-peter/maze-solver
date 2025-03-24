@@ -153,7 +153,7 @@ class Maze():
     def _animate(self):
         if self.__win is not None:
             self.__win.redraw()
-            time.sleep(0.002)
+            time.sleep(0.01)
 
     def _break_entrance_and_exit(self):
         self._cells[0][0].remove_wall("left")
@@ -163,49 +163,92 @@ class Maze():
         self._cells[column][row].visited = True
         while True:
             possible_directions = []
-            if row > 0:
-                left_cell = self._cells[column][row - 1]
-                if not left_cell.visited:
-                    possible_directions.append((column, row - 1))
-            if row < self.__num_cols - 1:
-                right_cell = self._cells[column][row + 1]
-                if not right_cell.visited:
-                    possible_directions.append((column, row + 1))
-            if column > 0:
-                top_cell = self._cells[column - 1][row]
-                if not top_cell.visited:
-                    possible_directions.append((column - 1, row))
-            if column < self.__num_rows - 1:
-                bottom_cell = self._cells[column + 1][row]
-                if not bottom_cell.visited:
-                    possible_directions.append((column + 1, row))
+            
+            # Check left neighbor (only if not leftmost column)
+            if column > 0 and not self._cells[column - 1][row].visited:
+                possible_directions.append((column - 1, row))
+                
+            # Check right neighbor (only if not rightmost column)
+            if column < self.__num_cols - 1 and not self._cells[column + 1][row].visited:
+                possible_directions.append((column + 1, row))
+                
+            # Check top neighbor (only if not top row)
+            if row > 0 and not self._cells[column][row - 1].visited:
+                possible_directions.append((column, row - 1))
+                
+            # Check bottom neighbor (only if not bottom row)
+            if row < self.__num_rows - 1 and not self._cells[column][row + 1].visited:
+                possible_directions.append((column, row + 1))
 
             if not possible_directions:
                 self._cells[column][row].draw()
                 return
-            else:
-                direction = random.choice(possible_directions)
-                if direction[0] > column:
-                    self._cells[column][row].remove_wall("bottom")
-                    self._cells[column + 1][row].remove_wall("top")
-                    self._break_walls_r(column + 1, row)
-                elif direction[0] < column:
-                    self._cells[column][row].remove_wall("top")
-                    self._cells[column - 1][row].remove_wall("bottom")
-                    self._break_walls_r(column - 1, row)
-                elif direction[1] > row:
-                    self._cells[column][row].remove_wall("right")
-                    self._cells[column][row + 1].remove_wall("left")
-                    self._break_walls_r(column, row + 1)
-                elif direction[1] < row:
-                    self._cells[column][row].remove_wall("left")
-                    self._cells[column][row - 1].remove_wall("right")
-                    self._break_walls_r(column, row - 1)
+            
+            # Choose a random direction
+            next_cell = random.choice(possible_directions)
+            next_column, next_row = next_cell
+
+            # Break walls between current cell and next cell
+            if next_column < column:  # Moving left
+                self._cells[column][row].remove_wall("left")
+                self._cells[next_column][next_row].remove_wall("right")
+            elif next_column > column:  # Moving right
+                self._cells[column][row].remove_wall("right")
+                self._cells[next_column][next_row].remove_wall("left")
+            elif next_row < row:  # Moving up
+                self._cells[column][row].remove_wall("top")
+                self._cells[next_column][next_row].remove_wall("bottom")
+            elif next_row > row:  # Moving down
+                self._cells[column][row].remove_wall("bottom")
+                self._cells[next_column][next_row].remove_wall("top")
+
+            # Recursively visit the next cell
+            self._break_walls_r(next_column, next_row)
 
     def _reset_cells_visited(self):
         for column in self._cells:
             for cell in column:
                 cell.visited = False
+
+    def in_bounds(self, column, row):
+        return 0 <= column < len(self._cells) and 0 <= row < len(self._cells[column])
+
+    def solve(self):
+        return self._solve_r(0, 0)
+
+    def _solve_r(self, column, row):
+        # Step 1: Animate and mark the current cell as visited
+        self._animate()
+        current = self._cells[column][row]
+        current.visited = True
+
+        # Step 2: Check if we've reached the end cell
+        if current == self._cells[-1][-1]:  # Assuming bottom-right corner is the goal
+            return True
+
+        # Step 3: Define potential neighbors (but check bounds before accessing)
+        potential_neighbours = [
+            (column - 1, row, current.has_left_wall),   # Left
+            (column + 1, row, current.has_right_wall),  # Right
+            (column, row - 1, current.has_top_wall),    # Top
+            (column, row + 1, current.has_bottom_wall)  # Bottom
+        ]
+
+        # Step 4: Iterate over valid neighbors
+        for target_column, target_row, wall in potential_neighbours:
+            if self.in_bounds(target_column, target_row):  # Only proceed if within bounds
+                target_cell = self._cells[target_column][target_row]
+                if not wall and not target_cell.visited:  # Check wall and visitation
+                    # Draw a move to the target cell
+                    current.draw_move(target_cell)
+                    # Recursively attempt to solve from the target cell
+                    if self._solve_r(target_column, target_row):
+                        return True  # If solving from the target cell succeeds, bubble up True
+                    else:
+                        # Backtracking: Undo the move if the path didn't lead to the solution
+                        current.draw_move(target_cell, undo=True)
+        # If none of the neighbors lead to a solution, backtrack
+        return False
 
 def main():
     win = Window(800, 600)
@@ -213,6 +256,7 @@ def main():
     maze_1._break_entrance_and_exit()
     maze_1._break_walls_r(0, 0)
     maze_1._reset_cells_visited()
+    maze_1.solve()
     win.wait_for_close()
 
 if __name__ == "__main__":
